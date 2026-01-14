@@ -7,3 +7,6 @@
 build/
 example/ios/.symlinks
 .idea/
+
+# FVM Version Cache
+.fvm/

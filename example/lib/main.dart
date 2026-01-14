@@ -1,5 +1,3 @@
-// ignore_for_file: depend_on_referenced_packages
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_2d_amap/flutter_2d_amap.dart';
@@ -14,7 +12,6 @@ void main() {
 }
 
 class MyApp extends StatefulWidget {
-
   const MyApp({super.key});
 
   @override
@@ -22,46 +19,43 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-
   List<PoiSearch> _list = [];
   int _index = 0;
   final ScrollController _controller = ScrollController();
-  late AMap2DController? _aMap2DController;
-  
+  late AMapController? _aMapController;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('flutter_2d_amap'),
-        ),
-        body: SafeArea(
-          child: Column(
-            children: <Widget>[
-              Expanded(
-                flex: 9,
-                child: AMap2DView(
-                  onPoiSearched: (result) {
-                    if (result.isEmpty) {
-                      if (kDebugMode) {
-                        print('无搜索结果返回');
-                      }
-                      return;
-                    }
-                    _controller.animateTo(0.0, duration: const Duration(milliseconds: 10), curve: Curves.ease);
-                    setState(() {
-                      _index = 0;
-                      _list = result;
-                    });
-                  },
-                  onAMap2DViewCreated: (controller) {
-                    _aMap2DController = controller;
-                  },
-                ),
+        home: Scaffold(
+      appBar: AppBar(
+        title: const Text('flutter_2d_amap'),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: <Widget>[
+            Expanded(
+              flex: 9,
+              child: AMapView(
+                onPoiSearched: (List<PoiSearch> result) {
+                  print("User result: ${result.first.toJson()}");
+                },
+                onPoiClick: (Poi poi) {
+                  print(
+                      'User clicked POI: ${poi.name} (ID: ${poi.id}) at ${poi.latLng}');
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Clicked POI: ${poi.name}'),
+                    duration: const Duration(seconds: 1),
+                  ));
+                },
+                onAMapViewCreated: (controller) {
+                  _aMapController = controller;
+                },
               ),
-              Expanded(
-                flex: 11,
-                child: ListView.separated(
+            ),
+            Expanded(
+              flex: 11,
+              child: ListView.separated(
                   controller: _controller,
                   shrinkWrap: true,
                   itemCount: _list.length,
@@ -73,8 +67,16 @@ class _MyAppState extends State<MyApp> {
                       onTap: () {
                         setState(() {
                           _index = index;
-                          if (_aMap2DController != null) {
-                            _aMap2DController?.move(_list[index].latitude ?? '', _list[index].longitude ?? '');
+                          if (_aMapController != null) {
+                            final lat =
+                                double.tryParse(_list[index].latitude ?? '') ??
+                                    0;
+                            final lon =
+                                double.tryParse(_list[index].longitude ?? '') ??
+                                    0;
+                            _aMapController?.moveCamera(
+                              CameraUpdate.newLatLng(LatLng(lat, lon)),
+                            );
                           }
                         });
                       },
@@ -90,20 +92,114 @@ class _MyAppState extends State<MyApp> {
                               ),
                             ),
                             Opacity(
-                              opacity: _index == index ? 1 : 0,
-                              child: const Icon(Icons.done, color: Colors.blue)
-                            )
+                                opacity: _index == index ? 1 : 0,
+                                child:
+                                    const Icon(Icons.done, color: Colors.blue))
                           ],
                         ),
                       ),
                     );
-                  }
-                ),
-              )
-            ],
-          ),
+                  }),
+            )
+          ],
         ),
       ),
-    );
+      floatingActionButton: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'clear',
+            onPressed: () {
+              _aMapController?.clear();
+            },
+            backgroundColor: Colors.red,
+            child: const Icon(Icons.delete),
+          ),
+          const SizedBox(width: 16),
+          FloatingActionButton(
+            heroTag: 'add',
+            onPressed: () {
+              _aMapController?.addMarker(Marker(
+                position: const LatLng(39.909187, 116.397451),
+                title: 'Tiananmen',
+                snippet: 'Beijing, China',
+                draggable: true,
+                icon: BitmapDescriptor.defaultMarker,
+                anchor: const Offset(0.5, 0.5), // User requested (0.5, 0.5)
+                infoWindowEnable: false, // User requested disable
+                onTap: (id) {
+                  print('Marker tapped: $id');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Marker tapped: $id')));
+                },
+                onDragEnd: (id, position) {
+                  print('Marker drag end: $id, at $position');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Drag end: $position')));
+                },
+              ));
+              _aMapController?.addPolygon(Polygon(
+                id: 'polygon_1',
+                points: [
+                  const LatLng(22.574005, 113.942954),
+                  const LatLng(22.574005, 113.942004),
+                  const LatLng(22.570005, 113.942004),
+                ],
+                strokeWidth: 2,
+                strokeColor: Colors.red,
+                fillColor: Colors.red.withOpacity(0.3),
+              ));
+              _aMapController?.addPolyline(Polyline(
+                points: [
+                  const LatLng(22.574005, 113.942954),
+                  const LatLng(22.574005, 113.945000),
+                ],
+                width: 5,
+                color: Colors.blue,
+                isDottedLine: true,
+              ));
+            },
+            child: const Icon(Icons.add_location),
+          ),
+          const SizedBox(width: 16),
+          FloatingActionButton(
+            heroTag: 'update',
+            onPressed: () {
+              _aMapController?.updatePolygon(Polygon(
+                id: 'polygon_1',
+                points: [
+                  const LatLng(22.574005, 113.942954),
+                  const LatLng(22.574005, 113.942004),
+                  const LatLng(22.570005, 113.942004),
+                  const LatLng(22.570005, 113.942954),
+                ],
+                strokeWidth: 4,
+                strokeColor: Colors.red,
+                fillColor: Colors.green.withOpacity(0.3),
+              ));
+            },
+            backgroundColor: Colors.blue,
+            child: const Icon(Icons.edit),
+          ),
+          const SizedBox(width: 16),
+          FloatingActionButton(
+            heroTag: 'camera',
+            onPressed: () {
+              _aMapController?.animateCamera(
+                CameraUpdate.newCameraPosition(
+                  const CameraPosition(
+                    target: LatLng(39.909187, 116.397451),
+                    zoom: 15.0,
+                  ),
+                ),
+                duration: const Duration(milliseconds: 1000),
+              );
+            },
+            backgroundColor: Colors.orange,
+            child: const Icon(Icons.camera_alt),
+          ),
+        ],
+      ),
+    ));
   }
 }

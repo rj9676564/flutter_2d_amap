@@ -20,6 +20,7 @@ import com.amap.api.maps2d.LocationSource;
 import com.amap.api.maps2d.MapView;
 import com.amap.api.maps2d.model.BitmapDescriptor;
 import com.amap.api.maps2d.model.BitmapDescriptorFactory;
+import com.amap.api.maps2d.model.CameraPosition;
 import com.amap.api.maps2d.model.LatLng;
 import com.amap.api.maps2d.model.Marker;
 import com.amap.api.maps2d.model.MarkerOptions;
@@ -44,7 +45,7 @@ import io.flutter.plugin.platform.PlatformView;
  * 2019/6/26 0026 10:18.
  */
 public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler, LocationSource, AMapLocationListener,
-        AMap.OnMapClickListener, PoiSearch.OnPoiSearchListener {
+        AMap.OnMapClickListener, PoiSearch.OnPoiSearchListener, AMap.OnMarkerClickListener, AMap.OnMarkerDragListener,AMap.OnCameraChangeListener {
     
     private static  final String SEARCH_CONTENT = "010000|010100|020000|030000|040000|050000|050100|060000|060100|060200|060300|060400|070000|080000|080100|080300|080500|080600|090000|090100|090200|090300|100000|100100|110000|110100|120000|120200|120300|130000|140000|141200|150000|150100|150200|160000|160100|170000|170100|170200|180000|190000|200000";
   
@@ -60,8 +61,18 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     private final Context context;
     private String keyWord = "";
     private boolean isPoiSearch;
+    private boolean showClickMarker;
+    private boolean moveCameraOnTap;
+    private boolean compassEnabled = false;
+    private boolean scaleEnabled = false;
+    private boolean zoomGesturesEnabled = true;
+    private boolean scrollGesturesEnabled = true;
+    private Map<String, Object> initialCameraPosition;
+    private boolean isClick;
     private static final String IS_POI_SEARCH = "isPoiSearch";
     private String city = "";
+    private Map<String, com.amap.api.maps2d.model.Polygon> polygonMap = new HashMap<>();
+    private Map<String, Marker> markerMap = new HashMap<>();
 
     AMap2DView(final Context context, BinaryMessenger messenger, int id, Map<String, Object> params, AMap2DDelegate delegate) {
         this.context = context;
@@ -75,7 +86,37 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         if (params.containsKey(IS_POI_SEARCH)) {
             isPoiSearch = (boolean) params.get(IS_POI_SEARCH);
         }
+        if (params.containsKey("showClickMarker")) {
+            showClickMarker = (boolean) params.get("showClickMarker");
+        }
+        if (params.containsKey("moveCameraOnTap")) {
+            moveCameraOnTap = (boolean) params.get("moveCameraOnTap");
+        }
+        if (params.containsKey("compassEnabled")) {
+            compassEnabled = (boolean) params.get("compassEnabled");
+        }
+        if (params.containsKey("scaleEnabled")) {
+            scaleEnabled = (boolean) params.get("scaleEnabled");
+        }
+        if (params.containsKey("zoomGesturesEnabled")) {
+            zoomGesturesEnabled = (boolean) params.get("zoomGesturesEnabled");
+        }
+        if (params.containsKey("scrollGesturesEnabled")) {
+            scrollGesturesEnabled = (boolean) params.get("scrollGesturesEnabled");
+        }
+        if (params.containsKey("initialCameraPosition") && params.get("initialCameraPosition") != null) {
+            initialCameraPosition = (Map<String, Object>) params.get("initialCameraPosition");
+        }
+        if (params.containsKey("onCameraChange")) {
+            onCameraChange = (boolean) params.get("onCameraChange");
+        }
+        if (params.containsKey("onCameraChangeFinish")) {
+            onCameraChangeFinish = (boolean) params.get("onCameraChangeFinish");
+        }
     }
+    
+    private boolean onCameraChange = false;
+    private boolean onCameraChangeFinish = false;
     
     void setAMap2DDelegate(AMap2DDelegate delegate) {
         if (delegate != null){
@@ -100,8 +141,26 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     }
     
     private void setUpMap() {
-        CameraUpdateFactory.zoomTo(32);
+        if (initialCameraPosition != null) {
+            Map<String, Double> target = (Map<String, Double>) initialCameraPosition.get("target");
+            double zoom = toDouble(initialCameraPosition.get("zoom"));
+            aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(target.get("latitude"), target.get("longitude")), (float) zoom));
+        } else {
+             aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
+        }
+        
+        com.amap.api.maps2d.UiSettings uiSettings = aMap.getUiSettings();
+        uiSettings.setCompassEnabled(compassEnabled);
+        uiSettings.setScaleControlsEnabled(scaleEnabled);
+        uiSettings.setZoomGesturesEnabled(zoomGesturesEnabled);
+        uiSettings.setScrollGesturesEnabled(scrollGesturesEnabled);
+        
+        android.util.Log.d("Flutter2dAMap", "setUpMap: compass=" + compassEnabled + ", scale=" + scaleEnabled + ", zoom=" + zoomGesturesEnabled + ", scroll=" + scrollGesturesEnabled);
+        
         aMap.setOnMapClickListener(this);
+        aMap.setOnMarkerClickListener(this);
+        aMap.setOnMarkerDragListener(this);
+        aMap.setOnCameraChangeListener(this);
         // 设置定位监听
         aMap.setLocationSource(this);
         // 设置默认定位按钮是否显示
@@ -136,16 +195,215 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                     mLocationClient.startLocation();
                 }
                 break;
+            case "addMarker":
+                Map<String, Double> positionMap = (Map<String, Double>) request.get("position");
+                boolean draggable = (boolean) request.get("draggable");
+                String title = (String) request.get("title");
+                String snippet = (String) request.get("snippet");
+                Object iconObj = request.get("icon");
+                String markerId = (String) request.get("id");
+                double anchorX = toDouble(request.get("anchorX"));
+                double anchorY = toDouble(request.get("anchorY"));
+                boolean infoWindowEnable = (boolean) request.get("infoWindowEnable");
+
+                if (positionMap != null) {
+                    LatLng latLng = new LatLng(positionMap.get("latitude"), positionMap.get("longitude"));
+                    MarkerOptions markerOptions = new MarkerOptions();
+                    markerOptions.position(latLng);
+                    if (title != null) {
+                        markerOptions.title(title);
+                    }
+                    if (snippet != null) {
+                        markerOptions.snippet(snippet);
+                    }
+                    markerOptions.draggable(draggable);
+                    markerOptions.anchor((float) anchorX, (float) anchorY);
+                    
+                    BitmapDescriptor descriptor = null;
+                    if (iconObj != null) {
+                        descriptor = getBitmapDescriptor(iconObj);
+                    }
+                    if (descriptor != null) {
+                        markerOptions.icon(descriptor);
+                    } else {
+                        markerOptions.icon(BitmapDescriptorFactory.defaultMarker());
+                    }
+                    
+                    Marker marker = aMap.addMarker(markerOptions);
+                    Map<String, Object> userData = new HashMap<>();
+                    if (markerId != null) {
+                        userData.put("id", markerId);
+                        markerMap.put(markerId, marker);
+                    }
+                    userData.put("infoWindowEnable", infoWindowEnable);
+                    marker.setObject(userData);
+                }
+                break;
+            case "updateMarker":
+                Map<String, Double> updatePositionMap = (Map<String, Double>) request.get("position");
+                boolean updateDraggable = (boolean) request.get("draggable");
+                String updateTitle = (String) request.get("title");
+                String updateSnippet = (String) request.get("snippet");
+                Object updateIconObj = request.get("icon");
+                String updateMarkerId = (String) request.get("id");
+                double updateAnchorX = toDouble(request.get("anchorX"));
+                double updateAnchorY = toDouble(request.get("anchorY"));
+                boolean updateInfoWindowEnable = (boolean) request.get("infoWindowEnable");
+
+                Marker updateMarker = markerMap.get(updateMarkerId);
+                if (updateMarker != null) {
+                    if (updatePositionMap != null) {
+                        updateMarker.setPosition(new LatLng(updatePositionMap.get("latitude"), updatePositionMap.get("longitude")));
+                    }
+                    if (updateTitle != null) {
+                        updateMarker.setTitle(updateTitle);
+                    }
+                    if (updateSnippet != null) {
+                        updateMarker.setSnippet(updateSnippet);
+                    }
+                    updateMarker.setDraggable(updateDraggable);
+                    updateMarker.setAnchor((float) updateAnchorX, (float) updateAnchorY);
+
+                    BitmapDescriptor updateDescriptor = null;
+                    if (updateIconObj != null) {
+                        updateDescriptor = getBitmapDescriptor(updateIconObj);
+                    }
+                    if (updateDescriptor != null) {
+                        updateMarker.setIcon(updateDescriptor);
+                    }
+                    
+                    // Update user data object if needed
+                     Map<String, Object> updateUserData = new HashMap<>();
+                     updateUserData.put("id", updateMarkerId);
+                     updateUserData.put("infoWindowEnable", updateInfoWindowEnable);
+                     updateMarker.setObject(updateUserData);
+                }
+                break;
+            case "removeMarker":
+                String removeMarkerId = (String) request.get("id");
+                Marker removeMarker = markerMap.get(removeMarkerId);
+                if (removeMarker != null) {
+                    removeMarker.remove();
+                    markerMap.remove(removeMarkerId);
+                }
+                break;
+            case "addPolyline":
+                List<Map<String, Double>> polylinePoints = (List<Map<String, Double>>) request.get("points");
+                double polylineWidth = toDouble(request.get("width"));
+                long polylineColor = ((Number) request.get("color")).longValue();
+                boolean isDottedLine = (boolean) request.get("isDottedLine");
+                boolean geodesic = (boolean) request.get("geodesic");
+                boolean visible = (boolean) request.get("visible");
+                int joinType = (int) request.get("joinType"); // 0: bevel, 1: miter, 2: round
+                
+                if (polylinePoints != null && polylinePoints.size() > 0) {
+                    com.amap.api.maps2d.model.PolylineOptions polylineOptions = new com.amap.api.maps2d.model.PolylineOptions();
+                    for (Map<String, Double> point : polylinePoints) {
+                        polylineOptions.add(new LatLng(point.get("latitude"), point.get("longitude")));
+                    }
+                    polylineOptions.width((float) polylineWidth);
+                    polylineOptions.color((int) polylineColor);
+                    polylineOptions.setDottedLine(isDottedLine);
+                    polylineOptions.geodesic(geodesic);
+                    polylineOptions.visible(visible);
+                    // AMap 2D SDK does not support setLineJoinType directly.
+                    aMap.addPolyline(polylineOptions);
+                }
+                break;
+            case "addPolygon":
+                List<Map<String, Double>> points = (List<Map<String, Double>>) request.get("points");
+                double strokeWidth = toDouble(request.get("strokeWidth"));
+                long strokeColor = ((Number) request.get("strokeColor")).longValue();
+                long fillColor = ((Number) request.get("fillColor")).longValue();
+                int joinTypePolygon = (int) request.get("joinType"); // 0: bevel, 1: miter, 2: round
+
+                if (points != null && points.size() > 0) {
+                    com.amap.api.maps2d.model.PolygonOptions polygonOptions = new com.amap.api.maps2d.model.PolygonOptions();
+                    for (Map<String, Double> point : points) {
+                        polygonOptions.add(new LatLng(point.get("latitude"), point.get("longitude")));
+                    }
+                    polygonOptions.strokeWidth((float) strokeWidth);
+                    polygonOptions.strokeColor((int) strokeColor);
+                    polygonOptions.fillColor((int) fillColor);
+                    com.amap.api.maps2d.model.Polygon polygon = aMap.addPolygon(polygonOptions);
+                    String id = (String) request.get("id");
+                    if (id != null) {
+                        polygonMap.put(id, polygon);
+                    }
+                }
+                break;
+            case "updatePolygon":
+                String updateId = (String) request.get("id");
+                List<Map<String, Double>> updatePoints = (List<Map<String, Double>>) request.get("points");
+                double updateStrokeWidth = toDouble(request.get("strokeWidth"));
+                long updateStrokeColor = ((Number) request.get("strokeColor")).longValue();
+                long updateFillColor = ((Number) request.get("fillColor")).longValue();
+
+                com.amap.api.maps2d.model.Polygon updatePolygon = polygonMap.get(updateId);
+                if (updatePolygon != null) {
+                    if (updatePoints != null && updatePoints.size() > 0) {
+                       List<LatLng> latLngs = new java.util.ArrayList<>();
+                        for (Map<String, Double> point : updatePoints) {
+                            latLngs.add(new LatLng(point.get("latitude"), point.get("longitude")));
+                        }
+                        updatePolygon.setPoints(latLngs);
+                    }
+                    updatePolygon.setStrokeWidth((float) updateStrokeWidth);
+                    updatePolygon.setStrokeColor((int) updateStrokeColor);
+                    updatePolygon.setFillColor((int) updateFillColor);
+                    android.util.Log.d("Flutter2dAMap", "updatePolygon success: " + updateId + ", width: " + updateStrokeWidth);
+                } else {
+                    android.util.Log.e("Flutter2dAMap", "updatePolygon failed: " + updateId + " not found");
+                }
+                break;
+            case "removePolygon":
+                String removeId = (String) request.get("id");
+                com.amap.api.maps2d.model.Polygon removePolygon = polygonMap.get(removeId);
+                if (removePolygon != null) {
+                    removePolygon.remove();
+                    polygonMap.remove(removeId);
+                }
+                break;
+            case "clear":
+                if (aMap != null) {
+                    aMap.clear();
+                    mMarker = null;
+                    polygonMap.clear();
+                    markerMap.clear();
+                }
+                break;
+            case "moveCamera":
+                moveCamera(request);
+                break;
+            case "animateCamera":
+                animateCamera(request);
+                break;
+            case "getLocation":
+                if (mLocationClient != null) {
+                    AMapLocation location = mLocationClient.getLastKnownLocation();
+                    if (location != null) {
+                        Map<String, Double> resultLocation = new HashMap<>();
+                        resultLocation.put("latitude", location.getLatitude());
+                        resultLocation.put("longitude", location.getLongitude());
+                        result.success(resultLocation);
+                        return;
+                    }
+                }
+                result.success(null);
+                break;
             default:
                 break;    
         }
     }
 
-    private double toDouble(String obj) {
+    private double toDouble(Object obj) {
+        if (obj instanceof Number) {
+            return ((Number) obj).doubleValue();
+        }
         try {
-            return Double.parseDouble(obj);
+            return Double.parseDouble(obj.toString());
         } catch (Exception e) {
-            e.fillInStackTrace();
+            e.printStackTrace();
         }
         return 0D;
     }
@@ -169,7 +427,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                 // 显示系统小蓝点
                 mListener.onLocationChanged(aMapLocation);
                 aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
-                search(aMapLocation.getLatitude(), aMapLocation.getLongitude());
+                search(aMapLocation.getLatitude(), aMapLocation.getLongitude(), false);
             } else {
                 Toast.makeText(context,"定位失败，请检查GPS是否开启！", Toast.LENGTH_SHORT).show();
             }
@@ -183,6 +441,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         if (!isPoiSearch) {
             return;
         }
+        isClick = false;
         query = new PoiSearch.Query(keyWord, SEARCH_CONTENT, city);
         // 设置每页最多返回多少条poiitem
         query.setPageSize(50);
@@ -202,13 +461,14 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         drawMarkers(latLng, BitmapDescriptorFactory.defaultMarker());
     }
 
-    private void search(double latitude, double longitude) {
+    private void search(double latitude, double longitude, boolean isClick) {
         if (!isPoiSearch) {
             return;
         }
+        this.isClick = isClick;
         query = new PoiSearch.Query("", SEARCH_CONTENT, "");
         // 设置每页最多返回多少条poiitem
-        query.setPageSize(50);
+        query.setPageSize(1);
         query.setPageNum(0);
 
         try {
@@ -224,14 +484,25 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
 
     @Override
     public void onMapClick(LatLng latLng) {
+        if (null != methodChannel) {
+            final Map<String, Object> map = new HashMap<String, Object>(2);
+            map.put("latitude", latLng.latitude);
+            map.put("longitude", latLng.longitude);
+            methodChannel.invokeMethod("onAMapClick", map);
+        }
         drawMarkers(latLng, BitmapDescriptorFactory.defaultMarker());
-        search(latLng.latitude, latLng.longitude);
+        search(latLng.latitude, latLng.longitude, true);
     }
 
     private Marker mMarker;
     
     private void drawMarkers(LatLng latLng, BitmapDescriptor bitmapDescriptor) {
-        aMap.animateCamera(CameraUpdateFactory.changeLatLng(new LatLng(latLng.latitude, latLng.longitude)));
+        if (moveCameraOnTap) {
+            aMap.moveCamera(CameraUpdateFactory.changeLatLng(new LatLng(latLng.latitude, latLng.longitude)));
+        }
+        if (!showClickMarker) {
+             return;
+        }
         if (mMarker == null) {
             mMarker = aMap.addMarker(new MarkerOptions().position(latLng).icon(bitmapDescriptor).draggable(true));
         } else {
@@ -284,6 +555,16 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                 if (result.getQuery().equals(query)) {
                     final List<PoiItem> list = result.getPois();
 
+                    if (isClick && list.size() > 0) {
+                        PoiItem item = list.get(0);
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("poiId", item.getPoiId());
+                        map.put("poiName", item.getTitle());
+                        map.put("latitude", item.getLatLonPoint().getLatitude());
+                        map.put("longitude", item.getLatLonPoint().getLongitude());
+                        methodChannel.invokeMethod("onPoiClick", map);
+                    }
+
                     for (int i = 0; i < list.size(); i++) {
                         PoiItem item = list.get(i);
                         builder.append("{");
@@ -301,7 +582,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                         }
                     }
 
-                    if (list.size() > 0) {
+                    if (list.size() > 0 && !isClick) {
                         aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
                         move(list.get(0).getLatLonPoint().getLatitude(), list.get(0).getLatLonPoint().getLongitude());
                     }
@@ -321,6 +602,77 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
             postMessageRunnable.run();
         } else {
             platformThreadHandler.post(postMessageRunnable);
+        }    }
+
+    private void moveCamera(Object request) {
+        com.amap.api.maps2d.CameraUpdate update = getCameraUpdate(request);
+        if (update != null) {
+            aMap.moveCamera(update);
+        }
+    }
+
+    private void animateCamera(Object request) {
+        Map<String, Object> params = (Map<String, Object>) request;
+        Object cameraUpdateObj = params.get("cameraUpdate");
+        long duration = 250;
+        if (params.containsKey("duration")) {
+            duration = ((Number) params.get("duration")).longValue();
+        }
+        
+        com.amap.api.maps2d.CameraUpdate update = getCameraUpdate(cameraUpdateObj);
+        if (update != null) {
+            aMap.animateCamera(update, duration, null);
+        }
+    }
+
+    private com.amap.api.maps2d.CameraUpdate getCameraUpdate(Object request) {
+        if (!(request instanceof List)) {
+            return null;
+        }
+        List list = (List) request;
+        if (list.isEmpty()) {
+            return null;
+        }
+        String type = (String) list.get(0);
+        
+        switch (type) {
+            case "newLatLng":
+                Map<String, Double> latLngMap = (Map<String, Double>) list.get(1);
+                return CameraUpdateFactory.newLatLng(new LatLng(latLngMap.get("latitude"), latLngMap.get("longitude")));
+            case "newLatLngZoom":
+                Map<String, Double> latLngZoomMap = (Map<String, Double>) list.get(1);
+                double zoom = toDouble(list.get(2));
+                return CameraUpdateFactory.newLatLngZoom(
+                    new LatLng(latLngZoomMap.get("latitude"), latLngZoomMap.get("longitude")), 
+                    (float) zoom
+                );
+            case "zoomIn":
+                return CameraUpdateFactory.zoomIn();
+            case "zoomOut":
+                return CameraUpdateFactory.zoomOut();
+            case "zoomTo":
+                return CameraUpdateFactory.zoomTo((float) toDouble(list.get(1)));
+            case "scrollBy":
+                return CameraUpdateFactory.scrollBy(
+                    (float) toDouble(list.get(1)), 
+                    (float) toDouble(list.get(2))
+                );
+            case "newCameraPosition":
+                Map<String, Object> cameraParams = (Map<String, Object>) list.get(1);
+                Map<String, Double> targetMap = (Map<String, Double>) cameraParams.get("target");
+                double cZoom = toDouble(cameraParams.get("zoom"));
+                double cTilt = toDouble(cameraParams.get("tilt"));
+                double cBearing = toDouble(cameraParams.get("bearing"));
+                
+                com.amap.api.maps2d.model.CameraPosition cameraPosition = new com.amap.api.maps2d.model.CameraPosition(
+                    new LatLng(targetMap.get("latitude"), targetMap.get("longitude")),
+                    (float) cZoom,
+                    (float) cTilt,
+                    (float) cBearing
+                );
+                return CameraUpdateFactory.newCameraPosition(cameraPosition);
+            default:
+                return null;
         }
     }
 
@@ -328,4 +680,134 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     public void onPoiItemSearched(PoiItem poiItem, int i) {
 
     }
+
+    private BitmapDescriptor getBitmapDescriptor(Object iconObj) {
+        if (!(iconObj instanceof List)) {
+            return null;
+        }
+        List list = (List) iconObj;
+        if (list.isEmpty()) {
+            return null;
+        }
+        String type = (String) list.get(0);
+        if ("defaultMarker".equals(type)) {
+            if (list.size() > 1) {
+                float hue = ((Double) toDouble(list.get(1))).floatValue();
+                return BitmapDescriptorFactory.defaultMarker(hue);
+            }
+            return BitmapDescriptorFactory.defaultMarker();
+        } else if ("fromAsset".equals(type)) {
+            String assetName = (String) list.get(1);
+            String assetPath = io.flutter.FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(assetName);
+            return BitmapDescriptorFactory.fromAsset(assetPath);
+        } else if ("fromAssetImage".equals(type)) {
+            String assetName = (String) list.get(1);
+            String assetPath = io.flutter.FlutterInjector.instance().flutterLoader().getLookupKeyForAsset(assetName);
+            return BitmapDescriptorFactory.fromAsset(assetPath);
+        } else if ("fromBytes".equals(type)) {
+            if (list.size() > 1) {
+                Object data = list.get(1);
+                byte[] bytes = null;
+                if (data instanceof byte[]) {
+                    bytes = (byte[]) data;
+                }
+                if (bytes != null) {
+                    android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                    if (list.size() > 2) {
+                        List sizeList = (List) list.get(2);
+                        if (sizeList != null && sizeList.size() == 2) {
+                            double width = toDouble(sizeList.get(0));
+                            double height = toDouble(sizeList.get(1));
+                            // Scale bitmap
+                            if (width > 0 && height > 0) {
+                                bitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, (int)width, (int)height, true);
+                            }
+                        }
+                    }
+                    return BitmapDescriptorFactory.fromBitmap(bitmap);
+                }
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public boolean onMarkerClick(Marker marker) {
+        Object obj = marker.getObject();
+        if (obj instanceof Map) {
+            Map userData = (Map) obj;
+            String markerId = (String) userData.get("id");
+            Boolean infoWindowEnable = (Boolean) userData.get("infoWindowEnable");
+            
+            if (markerId != null) {
+                Map<String, String> map = new HashMap<>();
+                map.put("markerId", markerId);
+                methodChannel.invokeMethod("onMarkerClick", map);
+            }
+            
+            // If infoWindowEnable is false, return true to prevent default behavior (showing info window)
+            if (infoWindowEnable != null && !infoWindowEnable) {
+                return true;
+            }
+        } else if (obj instanceof String) {
+             // Fallback for types not using Map yet (if any left)
+            String markerId = (String) obj;
+            Map<String, String> map = new HashMap<>();
+            map.put("markerId", markerId);
+            methodChannel.invokeMethod("onMarkerClick", map);
+            return true; // Assume consumed if we have ID but no config
+        }
+        return false;
+    }
+
+    @Override
+    public void onMarkerDragStart(Marker marker) {
+    }
+
+    @Override
+    public void onMarkerDrag(Marker marker) {
+    }
+
+    @Override
+    public void onMarkerDragEnd(Marker marker) {
+        Object obj = marker.getObject();
+        String markerId = null;
+        if (obj instanceof Map) {
+             markerId = (String) ((Map) obj).get("id");
+        } else if (obj instanceof String) {
+             markerId = (String) obj;
+        }
+
+        if (markerId != null) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("markerId", markerId);
+            map.put("latitude", marker.getPosition().latitude);
+            map.put("longitude", marker.getPosition().longitude);
+            methodChannel.invokeMethod("onMarkerDragEnd", map);
+        }
+    }
+    @Override
+    public void onCameraChange(CameraPosition cameraPosition) {
+        if (null != methodChannel && onCameraChange) {
+            final Map<String, Object> map = new HashMap<String, Object>(2);
+            map.put("latitude", cameraPosition.target.latitude);
+            map.put("longitude", cameraPosition.target.longitude);
+            methodChannel.invokeMethod("onCameraChange", map);
+        }
+    }
+
+    @Override
+    public void onCameraChangeFinish(CameraPosition cameraPosition) {
+        if (null != methodChannel && onCameraChangeFinish) {
+            final Map<String, Object> map = new HashMap<String, Object>(2);
+            map.put("latitude", cameraPosition.target.latitude);
+            map.put("longitude", cameraPosition.target.longitude);
+            methodChannel.invokeMethod("onCameraChangeFinish", map);
+        }
+    }
+
+//    void onCameraChange(CameraPosition var1);
+//
+//    void onCameraChangeFinish(CameraPosition var1);
 }
+

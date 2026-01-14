@@ -31,16 +31,18 @@ class PoiSearch {
 	String? latitude;
 	String? longitude;
 
-	Map<String, dynamic> toJson() {
-		final Map<String, dynamic> data = <String, dynamic>{};
-		data['cityCode'] = cityCode;
-		data['cityName'] = cityName;
-		data['provinceName'] = provinceName;
-		data['title'] = title;
-		data['adName'] = adName;
-		data['provinceCode'] = provinceCode;
-		data['latitude'] = latitude;
-		data['longitude'] = longitude;
-		return data;
-	}
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = <String, dynamic>{};
+    data['cityCode'] = cityCode;
+    data['cityName'] = cityName;
+    data['provinceName'] = provinceName;
+    data['title'] = title;
+    data['adName'] = adName;
+    data['provinceCode'] = provinceCode;
+    data['latitude'] = latitude;
+    data['longitude'] = longitude;
+    return data;
+  }
+
+  String get address => '${provinceName ?? ''}${cityName ?? ''}${adName ?? ''}${title ?? ''}';
 }
