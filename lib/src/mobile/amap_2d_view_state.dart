@@ -50,6 +50,7 @@ class _CreationParams {
     this.scaleEnabled = false,
     this.zoomGesturesEnabled = true,
     this.scrollGesturesEnabled = true,
+    this.myLocationButtonEnabled = false,
     this.initialCameraPosition,
     this.onCameraChange = false,
     this.onCameraChangeFinish = false,
@@ -64,6 +65,7 @@ class _CreationParams {
       scaleEnabled: widget.scaleEnabled,
       zoomGesturesEnabled: widget.zoomGesturesEnabled,
       scrollGesturesEnabled: widget.scrollGesturesEnabled,
+      myLocationButtonEnabled: widget.myLocationButtonEnabled,
       initialCameraPosition: widget.initialCameraPosition,
       onCameraChange: widget.onCameraChange != null,
       onCameraChangeFinish: widget.onCameraChangeFinish != null,
@@ -77,6 +79,7 @@ class _CreationParams {
   final bool scaleEnabled;
   final bool zoomGesturesEnabled;
   final bool scrollGesturesEnabled;
+  final bool myLocationButtonEnabled;
   final CameraPosition? initialCameraPosition;
   final bool onCameraChange;
   final bool onCameraChangeFinish;
@@ -90,6 +93,7 @@ class _CreationParams {
       'scaleEnabled': scaleEnabled,
       'zoomGesturesEnabled': zoomGesturesEnabled,
       'scrollGesturesEnabled': scrollGesturesEnabled,
+      'myLocationButtonEnabled': myLocationButtonEnabled,
       'initialCameraPosition': initialCameraPosition?.toMap(),
       'onCameraChange': onCameraChange,
       'onCameraChangeFinish': onCameraChangeFinish,

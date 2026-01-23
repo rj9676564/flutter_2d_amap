@@ -5,6 +5,7 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
@@ -46,7 +47,7 @@ import io.flutter.plugin.platform.PlatformView;
  */
 public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler, LocationSource, AMapLocationListener,
         AMap.OnMapClickListener, PoiSearch.OnPoiSearchListener, AMap.OnMarkerClickListener, AMap.OnMarkerDragListener,AMap.OnCameraChangeListener {
-    
+    private String TAG = "AMap2DView";
     private static  final String SEARCH_CONTENT = "010000|010100|020000|030000|040000|050000|050100|060000|060100|060200|060300|060400|070000|080000|080100|080300|080500|080600|090000|090100|090200|090300|100000|100100|110000|110100|120000|120200|120300|130000|140000|141200|150000|150100|150200|160000|160100|170000|170100|170200|180000|190000|200000";
   
     private MapView mAMap2DView;
@@ -67,6 +68,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     private boolean scaleEnabled = false;
     private boolean zoomGesturesEnabled = true;
     private boolean scrollGesturesEnabled = true;
+    private boolean myLocationButtonEnabled = false;
     private Map<String, Object> initialCameraPosition;
     private boolean isClick;
     private static final String IS_POI_SEARCH = "isPoiSearch";
@@ -103,6 +105,9 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         }
         if (params.containsKey("scrollGesturesEnabled")) {
             scrollGesturesEnabled = (boolean) params.get("scrollGesturesEnabled");
+        }
+        if (params.containsKey("myLocationButtonEnabled")) {
+            myLocationButtonEnabled = (boolean) params.get("myLocationButtonEnabled");
         }
         if (params.containsKey("initialCameraPosition") && params.get("initialCameraPosition") != null) {
             initialCameraPosition = (Map<String, Object>) params.get("initialCameraPosition");
@@ -155,7 +160,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         uiSettings.setZoomGesturesEnabled(zoomGesturesEnabled);
         uiSettings.setScrollGesturesEnabled(scrollGesturesEnabled);
         
-        android.util.Log.d("Flutter2dAMap", "setUpMap: compass=" + compassEnabled + ", scale=" + scaleEnabled + ", zoom=" + zoomGesturesEnabled + ", scroll=" + scrollGesturesEnabled);
+        android.util.Log.d("Flutter2dAMap", "setUpMap: compass=" + compassEnabled + ", scale=" + scaleEnabled + ", zoom=" + zoomGesturesEnabled + ", scroll=" + scrollGesturesEnabled + ", myLocationButtonEnabled=" + myLocationButtonEnabled);
         
         aMap.setOnMapClickListener(this);
         aMap.setOnMarkerClickListener(this);
@@ -164,7 +169,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         // 设置定位监听
         aMap.setLocationSource(this);
         // 设置默认定位按钮是否显示
-        aMap.getUiSettings().setMyLocationButtonEnabled(true);
+        aMap.getUiSettings().setMyLocationButtonEnabled(myLocationButtonEnabled);
         MyLocationStyle myLocationStyle = new MyLocationStyle();
         myLocationStyle.strokeWidth(1f);
         myLocationStyle.strokeColor(Color.parseColor("#8052A3FF"));
@@ -180,7 +185,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     @Override
     public void onMethodCall(MethodCall methodCall, @NonNull MethodChannel.Result result) {
         String method = methodCall.method;
-        Map<String, Object> request = (Map<String, Object>) methodCall.arguments;
+        Map<String, Object> request = methodCall.arguments instanceof Map ? (Map<String, Object>) methodCall.arguments : null;
         switch(method) {
             case "search":
                 keyWord = (String) request.get("keyWord");
@@ -238,6 +243,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                     userData.put("infoWindowEnable", infoWindowEnable);
                     marker.setObject(userData);
                 }
+                result.success(null);
                 break;
             case "updateMarker":
                 Map<String, Double> updatePositionMap = (Map<String, Double>) request.get("position");
@@ -278,6 +284,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                      updateUserData.put("infoWindowEnable", updateInfoWindowEnable);
                      updateMarker.setObject(updateUserData);
                 }
+                result.success(null);
                 break;
             case "removeMarker":
                 String removeMarkerId = (String) request.get("id");
@@ -373,10 +380,10 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                 }
                 break;
             case "moveCamera":
-                moveCamera(request);
+                moveCamera(methodCall.arguments);
                 break;
             case "animateCamera":
-                animateCamera(request);
+                animateCamera(methodCall.arguments);
                 break;
             case "getLocation":
                 if (mLocationClient != null) {
@@ -605,6 +612,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         }    }
 
     private void moveCamera(Object request) {
+        Log.d(TAG,"moveCamera");
         com.amap.api.maps2d.CameraUpdate update = getCameraUpdate(request);
         if (update != null) {
             aMap.moveCamera(update);

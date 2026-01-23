@@ -22,6 +22,7 @@ class AMapView extends StatefulWidget {
     this.scaleEnabled = false,
     this.zoomGesturesEnabled = true,
     this.scrollGesturesEnabled = true,
+    this.myLocationButtonEnabled = false,
     this.initialCameraPosition,
     this.onPoiSearched,
     this.onPoiClick,
@@ -38,6 +39,7 @@ class AMapView extends StatefulWidget {
   final bool scaleEnabled;
   final bool zoomGesturesEnabled;
   final bool scrollGesturesEnabled;
+  final bool myLocationButtonEnabled;
   final CameraPosition? initialCameraPosition;
   final AMapViewCreatedCallback? onAMapViewCreated;
   final Function(List<PoiSearch>)? onPoiSearched;

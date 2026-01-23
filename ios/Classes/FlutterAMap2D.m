@@ -513,6 +513,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         }
         
         [self->_mapView addAnnotation:annotation];
+        result(nil);
     } else if ([[call method] isEqualToString:@"updateMarker"]) {
         NSDictionary* positionArgs = [call arguments][@"position"];
         NSString* title = [call arguments][@"title"];
@@ -557,6 +558,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
             [self->_mapView removeAnnotation:annotation];
             [self->_mapView addAnnotation:annotation];
         }
+        result(nil);
     } else if ([[call method] isEqualToString:@"removeMarker"]) {
         NSString* markerId = [call arguments][@"id"];
         MAPointAnnotation* annotation = [self->_markerMap objectForKey:markerId];

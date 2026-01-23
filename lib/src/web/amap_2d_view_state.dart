@@ -44,7 +44,9 @@ class AMapViewState extends State<AMapView> {
       /// 加载插件
       _aMap.plugin(plugins, allowInterop(() {
         _aMap.addControl(Scale());
-        _aMap.addControl(ToolBar());
+        if (widget.myLocationButtonEnabled) {
+          _aMap.addControl(ToolBar());
+        }
 
         final AMapWebController controller = AMapWebController(_aMap, widget);
         if (widget.onAMapViewCreated != null) {

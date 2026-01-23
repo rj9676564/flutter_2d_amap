@@ -18,8 +18,7 @@ public class AMap2DDelegate implements PluginRegistry.RequestPermissionsResultLi
 
     private final String[] permission = {
             Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.ACCESS_FINE_LOCATION
     };
 
     interface PermissionManager {
