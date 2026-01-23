@@ -15,7 +15,7 @@ import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.EventChannel;
-
+import com.amap.api.maps.MapsInitializer;
 /**
  * Flutter2dAmapPlugin
  * @author weilu
@@ -56,6 +56,7 @@ public class Flutter2dAmapPlugin implements FlutterPlugin, ActivityAware{
                     String androidKey = call.argument("android");
                     if (androidKey != null) {
                          AMapLocationClient.setApiKey(androidKey);
+                         MapsInitializer.setApiKey(androidKey);
                     }
                     result.success(null);
                     break;

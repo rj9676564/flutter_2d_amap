@@ -15,17 +15,17 @@ import com.amap.api.location.AMapLocation;
 import com.amap.api.location.AMapLocationClient;
 import com.amap.api.location.AMapLocationClientOption;
 import com.amap.api.location.AMapLocationListener;
-import com.amap.api.maps2d.AMap;
-import com.amap.api.maps2d.CameraUpdateFactory;
-import com.amap.api.maps2d.LocationSource;
-import com.amap.api.maps2d.MapView;
-import com.amap.api.maps2d.model.BitmapDescriptor;
-import com.amap.api.maps2d.model.BitmapDescriptorFactory;
-import com.amap.api.maps2d.model.CameraPosition;
-import com.amap.api.maps2d.model.LatLng;
-import com.amap.api.maps2d.model.Marker;
-import com.amap.api.maps2d.model.MarkerOptions;
-import com.amap.api.maps2d.model.MyLocationStyle;
+import com.amap.api.maps.AMap;
+import com.amap.api.maps.AMapWrapper;
+import com.amap.api.maps.CameraUpdateFactory;
+import com.amap.api.maps.LocationSource;
+import com.amap.api.maps.model.BitmapDescriptor;
+import com.amap.api.maps.model.BitmapDescriptorFactory;
+import com.amap.api.maps.model.CameraPosition;
+import com.amap.api.maps.model.LatLng;
+import com.amap.api.maps.model.Marker;
+import com.amap.api.maps.model.MarkerOptions;
+import com.amap.api.maps.model.MyLocationStyle;
 import com.amap.api.services.core.AMapException;
 import com.amap.api.services.core.LatLonPoint;
 import com.amap.api.services.core.PoiItem;
@@ -50,7 +50,8 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     private String TAG = "AMap2DView";
     private static  final String SEARCH_CONTENT = "010000|010100|020000|030000|040000|050000|050100|060000|060100|060200|060300|060400|070000|080000|080100|080300|080500|080600|090000|090100|090200|090300|100000|100100|110000|110100|120000|120200|120300|130000|140000|141200|150000|150100|150200|160000|160100|170000|170100|170200|180000|190000|200000";
   
-    private MapView mAMap2DView;
+    private MyWebView mAMapWebView;
+    private AMapWrapper aMapWrapper;
     private AMap aMap;
     private PoiSearch.Query query;
     private OnLocationChangedListener mListener;
@@ -73,7 +74,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     private boolean isClick;
     private static final String IS_POI_SEARCH = "isPoiSearch";
     private String city = "";
-    private Map<String, com.amap.api.maps2d.model.Polygon> polygonMap = new HashMap<>();
+    private Map<String, com.amap.api.maps.model.Polygon> polygonMap = new HashMap<>();
     private Map<String, Marker> markerMap = new HashMap<>();
 
     AMap2DView(final Context context, BinaryMessenger messenger, int id, Map<String, Object> params, AMap2DDelegate delegate) {
@@ -81,7 +82,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         platformThreadHandler = new Handler(context.getMainLooper());
         createMap(context);
         setAMap2DDelegate(delegate);
-        mAMap2DView.onResume();
+        
         methodChannel = new MethodChannel(messenger, "plugins.weilu/flutter_2d_amap_" + id);
         methodChannel.setMethodCallHandler(this);
 
@@ -123,12 +124,18 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     private boolean onCameraChange = false;
     private boolean onCameraChangeFinish = false;
     
+    private boolean isMapReady = false;
+    private boolean isPermissionSuccess = false;
+
     void setAMap2DDelegate(AMap2DDelegate delegate) {
         if (delegate != null){
             delegate.requestPermissions(new AMap2DDelegate.RequestPermission() {
                 @Override
                 public void onRequestPermissionSuccess() {
-                    setUpMap();
+                    isPermissionSuccess = true;
+                    if (isMapReady) {
+                        setUpMap();
+                    }
                 }
 
                 @Override
@@ -140,12 +147,25 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     }
     
     private void createMap(Context context) {
-        mAMap2DView = new MapView(context);
-        mAMap2DView.onCreate(new Bundle());
-        aMap = mAMap2DView.getMap();
+        mAMapWebView = new MyWebView(context);
+        MAWebViewWrapper webViewWrapper = new MAWebViewWrapper(mAMapWebView);
+        aMapWrapper = new AMapWrapper(context, webViewWrapper);
+        aMapWrapper.onCreate();
+        aMapWrapper.onResume();
+        aMapWrapper.getMapAsyn(new AMap.OnMapReadyListener() {
+            @Override
+            public void onMapReady(AMap map) {
+                aMap = map;
+                isMapReady = true;
+                if (isPermissionSuccess) {
+                    setUpMap();
+                }
+            }
+        });
     }
     
     private void setUpMap() {
+        if (aMap == null) return;
         if (initialCameraPosition != null) {
             Map<String, Double> target = (Map<String, Double>) initialCameraPosition.get("target");
             double zoom = toDouble(initialCameraPosition.get("zoom"));
@@ -154,9 +174,9 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
              aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
         }
         
-        com.amap.api.maps2d.UiSettings uiSettings = aMap.getUiSettings();
-        uiSettings.setCompassEnabled(compassEnabled);
-        uiSettings.setScaleControlsEnabled(scaleEnabled);
+        com.amap.api.maps.UiSettings uiSettings = aMap.getUiSettings();
+//        uiSettings.setCompassEnabled(compassEnabled);
+//        uiSettings.setScaleControlsEnabled(scaleEnabled);
         uiSettings.setZoomGesturesEnabled(zoomGesturesEnabled);
         uiSettings.setScrollGesturesEnabled(scrollGesturesEnabled);
         
@@ -169,7 +189,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         // 设置定位监听
         aMap.setLocationSource(this);
         // 设置默认定位按钮是否显示
-        aMap.getUiSettings().setMyLocationButtonEnabled(myLocationButtonEnabled);
+//        aMap.getUiSettings().setMyLocationButtonEnabled(myLocationButtonEnabled);
         MyLocationStyle myLocationStyle = new MyLocationStyle();
         myLocationStyle.strokeWidth(1f);
         myLocationStyle.strokeColor(Color.parseColor("#8052A3FF"));
@@ -304,7 +324,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                 int joinType = (int) request.get("joinType"); // 0: bevel, 1: miter, 2: round
                 
                 if (polylinePoints != null && polylinePoints.size() > 0) {
-                    com.amap.api.maps2d.model.PolylineOptions polylineOptions = new com.amap.api.maps2d.model.PolylineOptions();
+                    com.amap.api.maps.model.PolylineOptions polylineOptions = new com.amap.api.maps.model.PolylineOptions();
                     for (Map<String, Double> point : polylinePoints) {
                         polylineOptions.add(new LatLng(point.get("latitude"), point.get("longitude")));
                     }
@@ -325,14 +345,14 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                 int joinTypePolygon = (int) request.get("joinType"); // 0: bevel, 1: miter, 2: round
 
                 if (points != null && points.size() > 0) {
-                    com.amap.api.maps2d.model.PolygonOptions polygonOptions = new com.amap.api.maps2d.model.PolygonOptions();
+                    com.amap.api.maps.model.PolygonOptions polygonOptions = new com.amap.api.maps.model.PolygonOptions();
                     for (Map<String, Double> point : points) {
                         polygonOptions.add(new LatLng(point.get("latitude"), point.get("longitude")));
                     }
                     polygonOptions.strokeWidth((float) strokeWidth);
                     polygonOptions.strokeColor((int) strokeColor);
                     polygonOptions.fillColor((int) fillColor);
-                    com.amap.api.maps2d.model.Polygon polygon = aMap.addPolygon(polygonOptions);
+                    com.amap.api.maps.model.Polygon polygon = aMap.addPolygon(polygonOptions);
                     String id = (String) request.get("id");
                     if (id != null) {
                         polygonMap.put(id, polygon);
@@ -346,7 +366,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                 long updateStrokeColor = ((Number) request.get("strokeColor")).longValue();
                 long updateFillColor = ((Number) request.get("fillColor")).longValue();
 
-                com.amap.api.maps2d.model.Polygon updatePolygon = polygonMap.get(updateId);
+                com.amap.api.maps.model.Polygon updatePolygon = polygonMap.get(updateId);
                 if (updatePolygon != null) {
                     if (updatePoints != null && updatePoints.size() > 0) {
                        List<LatLng> latLngs = new java.util.ArrayList<>();
@@ -365,7 +385,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                 break;
             case "removePolygon":
                 String removeId = (String) request.get("id");
-                com.amap.api.maps2d.model.Polygon removePolygon = polygonMap.get(removeId);
+                com.amap.api.maps.model.Polygon removePolygon = polygonMap.get(removeId);
                 if (removePolygon != null) {
                     removePolygon.remove();
                     polygonMap.remove(removeId);
@@ -417,12 +437,12 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
     
     @Override
     public View getView() {
-        return mAMap2DView;
+        return mAMapWebView;
     }
 
     @Override
     public void dispose() {
-        mAMap2DView.onDestroy();
+        aMapWrapper.onDestroy();
         platformThreadHandler.removeCallbacks(postMessageRunnable);
         methodChannel.setMethodCallHandler(null);
     }
@@ -612,14 +632,16 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         }    }
 
     private void moveCamera(Object request) {
+        if (aMap == null) return;
         Log.d(TAG,"moveCamera");
-        com.amap.api.maps2d.CameraUpdate update = getCameraUpdate(request);
+        com.amap.api.maps.CameraUpdate update = getCameraUpdate(request);
         if (update != null) {
             aMap.moveCamera(update);
         }
     }
 
     private void animateCamera(Object request) {
+        if (aMap == null) return;
         Map<String, Object> params = (Map<String, Object>) request;
         Object cameraUpdateObj = params.get("cameraUpdate");
         long duration = 250;
@@ -627,13 +649,13 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
             duration = ((Number) params.get("duration")).longValue();
         }
         
-        com.amap.api.maps2d.CameraUpdate update = getCameraUpdate(cameraUpdateObj);
+        com.amap.api.maps.CameraUpdate update = getCameraUpdate(cameraUpdateObj);
         if (update != null) {
-            aMap.animateCamera(update, duration, null);
+//            aMap.animateCamera(update, duration, null);
         }
     }
 
-    private com.amap.api.maps2d.CameraUpdate getCameraUpdate(Object request) {
+    private com.amap.api.maps.CameraUpdate getCameraUpdate(Object request) {
         if (!(request instanceof List)) {
             return null;
         }
@@ -661,10 +683,10 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
             case "zoomTo":
                 return CameraUpdateFactory.zoomTo((float) toDouble(list.get(1)));
             case "scrollBy":
-                return CameraUpdateFactory.scrollBy(
-                    (float) toDouble(list.get(1)), 
-                    (float) toDouble(list.get(2))
-                );
+//                return CameraUpdateFactory.scrollBy(
+//                    (float) toDouble(list.get(1)),
+//                    (float) toDouble(list.get(2))
+//                );
             case "newCameraPosition":
                 Map<String, Object> cameraParams = (Map<String, Object>) list.get(1);
                 Map<String, Double> targetMap = (Map<String, Double>) cameraParams.get("target");
@@ -672,7 +694,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                 double cTilt = toDouble(cameraParams.get("tilt"));
                 double cBearing = toDouble(cameraParams.get("bearing"));
                 
-                com.amap.api.maps2d.model.CameraPosition cameraPosition = new com.amap.api.maps2d.model.CameraPosition(
+                com.amap.api.maps.model.CameraPosition cameraPosition = new com.amap.api.maps.model.CameraPosition(
                     new LatLng(targetMap.get("latitude"), targetMap.get("longitude")),
                     (float) cZoom,
                     (float) cTilt,

@@ -35,9 +35,7 @@ class Flutter2dAMap {
     if (kIsWeb) {
       _webKey = webKey;
     } else {
-      if (Platform.isIOS) {
-        return _channel.invokeMethod<bool>('setKey', iOSKey);
-      }
+      return _channel.invokeMethod<bool>('setKey', iOSKey);
     }
     return Future.value(true);
   }
