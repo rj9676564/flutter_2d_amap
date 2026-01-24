@@ -133,13 +133,11 @@
                                           message:error.localizedDescription 
                                           details:@(error.code)]);
           } else {
-               if (location) {
+               if (location && CLLocationCoordinate2DIsValid(location.coordinate)) {
                    result(@{@"latitude": @(location.coordinate.latitude), 
                            @"longitude": @(location.coordinate.longitude)});
                } else {
-                   result([FlutterError errorWithCode:@"LOCATION_ERROR" 
-                                              message:@"Location is null" 
-                                              details:nil]);
+                   result(nil);
                }
           }
           [locationManager stopUpdatingLocation];

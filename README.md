@@ -55,7 +55,7 @@ AMap2DView(
 
 ### Android
 
-AndroidManifest.xml 中添加：
+AndroidManifest.xml 中添加（可选，若使用 `setApiKey` 动态设置则可不加）：
 
 ```java
 
@@ -113,18 +113,20 @@ Flutter2dAMap.setApiKey(iOSKey: '配置你的key');
 
 ### Web
 
-`index.html`中添加（在`main.dart.js`之前）：
+`index.html` 中添加（在 `main.dart.js` 之前）：
 
 ```html
 <script src="https://webapi.amap.com/loader.js"></script>
 ```
 
-使用前设置key：
+使用前设置 key：
 
 ```dart
-
-Flutter2dAMap.setApiKey(webKey: '配置你的key');
-
+Flutter2dAMap.setApiKey(
+  iOSKey: '配置你的key',
+  androidKey: '配置你的key', 
+  webKey: '配置你的key'
+);
 ```
 
 ## License

@@ -15,9 +15,14 @@ A new Flutter plugin.
   s.source_files = 'Classes/**/*'
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
-  s.dependency 'AMap2DMap'
   s.dependency 'AMapSearch', "~> 8.1.0"
   s.dependency 'AMapLocation', "~> 2.8.0"
+  
+  # Support for manually added Lite SDK frameworks
+  s.vendored_frameworks = 'Frameworks/MAMapKit.framework'
+  s.resource = 'Frameworks/AMap.bundle'
+  s.frameworks = 'WebKit'
+
   s.static_framework = true
   s.ios.deployment_target = '9.0'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'arm64' }

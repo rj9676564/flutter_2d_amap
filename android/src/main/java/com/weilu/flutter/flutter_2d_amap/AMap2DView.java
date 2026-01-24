@@ -170,6 +170,7 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
             Map<String, Double> target = (Map<String, Double>) initialCameraPosition.get("target");
             double zoom = toDouble(initialCameraPosition.get("zoom"));
             aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(target.get("latitude"), target.get("longitude")), (float) zoom));
+            isFirstLocation = false;
         } else {
              aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
         }
@@ -447,13 +448,18 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
         methodChannel.setMethodCallHandler(null);
     }
 
+    private boolean isFirstLocation = true;
+
     @Override
     public void onLocationChanged(AMapLocation aMapLocation) {
         if (mListener != null && aMapLocation != null) {
             if (aMapLocation.getErrorCode() == 0) {
                 // 显示系统小蓝点
                 mListener.onLocationChanged(aMapLocation);
-                aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
+                if (isFirstLocation) {
+                    isFirstLocation = false;
+                    aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(aMapLocation.getLatitude(), aMapLocation.getLongitude()), 16));
+                }
                 search(aMapLocation.getLatitude(), aMapLocation.getLongitude(), false);
             } else {
                 Toast.makeText(context,"定位失败，请检查GPS是否开启！", Toast.LENGTH_SHORT).show();
@@ -610,7 +616,6 @@ public class AMap2DView implements PlatformView, MethodChannel.MethodCallHandler
                     }
 
                     if (list.size() > 0 && !isClick) {
-                        aMap.moveCamera(CameraUpdateFactory.zoomTo(16));
                         move(list.get(0).getLatLonPoint().getLatitude(), list.get(0).getLatLonPoint().getLongitude());
                     }
                 }

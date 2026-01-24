@@ -250,7 +250,21 @@ public class Flutter2dAmapPlugin implements FlutterPlugin, ActivityAware{
                 e.printStackTrace();
             }
             break;
+          case "setKey":
+            String key = (String) methodCall.arguments;
+            if (key != null && !key.isEmpty()) {
+              AMapLocationClient.setApiKey(key);
+              try {
+                MapsInitializer.setApiKey(key);
+                ServiceSettings.getInstance().setApiKey(key);
+              } catch (Throwable e) {
+                e.printStackTrace();
+              }
+            }
+            result.success(true);
+            break;
           default:
+            result.notImplemented();
             break;
         }
       }

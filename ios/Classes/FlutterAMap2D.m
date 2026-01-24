@@ -13,6 +13,7 @@
 #import <AMapSearchKit/AMapSearchKit.h>
 #import <CoreGraphics/CoreGraphics.h>
 #import <objc/runtime.h>
+#import "MAWKWebView.h"
 
 @implementation FlutterAMap2DFactory {
     NSObject<FlutterBinaryMessenger>* _messenger;
@@ -43,15 +44,15 @@
 @end
 
 
-@interface FlutterAMap2DController()<AMapLocationManagerDelegate, AMapSearchDelegate, CLLocationManagerDelegate, MAMapViewDelegate>
+@interface FlutterAMap2DController()<AMapLocationManagerDelegate, AMapSearchDelegate, MAMapDelegate>
 
-    @property (strong, nonatomic) CLLocationManager *mannger;
     @property (strong, nonatomic) AMapLocationManager *locationManager;
     @property (strong, nonatomic) AMapSearchAPI *search;
 @end
 
 @implementation FlutterAMap2DController {
-    MAMapView* _mapView;
+    MAWKWebView* _webViewContainer;
+    MAMap* _map;
     int64_t _viewId;
     FlutterMethodChannel* _channel;
     MAPointAnnotation* _pointAnnotation;
@@ -98,14 +99,13 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         _onCameraChange = [args[@"onCameraChange"] boolValue] == YES;
         _onCameraChangeFinish = [args[@"onCameraChangeFinish"] boolValue] == YES;
         /// 初始化地图
-        _mapView = [[MAMapView alloc] initWithFrame:frame];
-        _mapView.contentScaleFactor = [UIScreen mainScreen].scale;
-        _mapView.delegate = self;
-//        _mapView.touchPOIEnabled = YES;
-        _mapView.showsCompass = _compassEnabled;
-        _mapView.showsScale = _scaleEnabled;
-        _mapView.zoomEnabled = _zoomGesturesEnabled;
-        _mapView.scrollEnabled = _scrollGesturesEnabled;
+        _webViewContainer = [[MAWKWebView alloc] initWithFrame:frame];
+        _map = [[MAMap alloc] initWithWebView:_webViewContainer];
+        _map.delegate = self;
+        [_map createMap];
+        
+        _map.zoomEnabled = _zoomGesturesEnabled;
+        _map.scrollEnabled = _scrollGesturesEnabled;
         
         if (_initialCameraPosition != nil && ![_initialCameraPosition isKindOfClass:[NSNull class]]) {
             NSDictionary* target = _initialCameraPosition[@"target"];
@@ -113,62 +113,63 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
             CLLocationCoordinate2D center;
             center.latitude = [target[@"latitude"] doubleValue];
             center.longitude = [target[@"longitude"] doubleValue];
-            [_mapView setZoomLevel:zoom animated:NO];
-            [_mapView setCenterCoordinate:center animated:NO];
+            [_map setZoomLevel:zoom animated:NO];
+            [_map setCenterCoordinate:center animated:NO];
+        } else {
+            [_map setZoomLevel:16.5 animated:NO];
         }
-        
-        // 请求定位权限
-        self.mannger =  [[CLLocationManager alloc] init];
-        self.mannger.delegate = self;
-        [self.mannger requestWhenInUseAuthorization];
     }
     return self;
 }
 
--(void)locationManager:(CLLocationManager *)manager didChangeAuthorizationStatus:(CLAuthorizationStatus)status {
-    switch (status) {
-        case kCLAuthorizationStatusAuthorizedAlways:
-        case kCLAuthorizationStatusAuthorizedWhenInUse:{
-            _mapView.showsUserLocation = YES;
-            _mapView.userTrackingMode = MAUserTrackingModeFollow;
-            
-            /// 初始化定位
-            self.locationManager = [[AMapLocationManager alloc] init];
-            self.locationManager.delegate = self;
-            /// 开始定位
-            [self.locationManager startUpdatingLocation];
-            /// 初始化搜索
-            self.search = [[AMapSearchAPI alloc] init];
-            self.search.delegate = self;
-            break;
-        }
-        default:
-            NSLog(@"授权失败");
-            break;
+- (void)mapReady:(MAMap *)map {
+    if (_initialCameraPosition != nil && ![_initialCameraPosition isKindOfClass:[NSNull class]]) {
+        NSDictionary* target = _initialCameraPosition[@"target"];
+        double zoom = [_initialCameraPosition[@"zoom"] doubleValue];
+        CLLocationCoordinate2D center;
+        center.latitude = [target[@"latitude"] doubleValue];
+        center.longitude = [target[@"longitude"] doubleValue];
+        [_map setZoomLevel:zoom animated:NO];
+        [_map setCenterCoordinate:center animated:NO];
+    } else {
+        [_map setZoomLevel:16.5 animated:NO];
+    }
+    
+    // 开启蓝点展示和定位同步
+    _map.showsUserLocation = YES;
+    _map.userTrackingMode = MAUserTrackingModeFollow;
+    
+    // 配置小蓝点样式
+    // MAUserLocationRepresentation *represent = [[MAUserLocationRepresentation alloc] init];
+    // represent.showsAccuracyRing = YES;
+    // represent.fillColor = [UIColor colorWithRed:0 green:0 blue:1 alpha:0.1];
+    // represent.strokeColor = [UIColor colorWithRed:0 green:0 blue:1 alpha:0.3];
+    // represent.lineWidth = 1.0;
+    // [_map updateUserLocationRepresentation:represent];
+    
+    if (!self.locationManager) {
+        self.locationManager = [[AMapLocationManager alloc] init];
+        self.locationManager.delegate = self;
+        [self.locationManager setDesiredAccuracy:kCLLocationAccuracyBest];
+    }
+    [self.locationManager startUpdatingLocation];
+    [self.locationManager startUpdatingHeading];
+    
+    if (!self.search) {
+        self.search = [[AMapSearchAPI alloc] init];
+        self.search.delegate = self;
     }
 }
 
-// - (void)mapView:(MAMapView *)mapView didTouchPois:(NSArray *)pois {
-//    if (pois.count > 0) {
-//        MATouchPoi *poi = pois[0];
-//        NSDictionary* arguments = @{
-//            @"poiId" : poi.uid,
-//            @"poiName" : poi.name,
-//            @"latitude" : @(poi.coordinate.latitude),
-//            @"longitude" : @(poi.coordinate.longitude)
-//        };
-//        [_channel invokeMethod:@"onPoiClick" arguments:arguments];
-//    }
-// }
 
-- (void)mapView:(MAMapView *)mapView didSingleTappedAtCoordinate:(CLLocationCoordinate2D)coordinate {
+- (void)map:(MAMap *)map didSingleTappedAtCoordinate:(CLLocationCoordinate2D)coordinate {
     NSDictionary* arguments = @{
             @"latitude" : @(coordinate.latitude),
             @"longitude" : @(coordinate.longitude)
         };
     [_channel invokeMethod:@"onAMapClick" arguments:arguments];
     if (_moveCameraOnTap) {
-        [self->_mapView setCenterCoordinate:coordinate animated:YES];
+        [self->_map setCenterCoordinate:coordinate animated:YES];
     }
     if (_showClickMarker) {
         [self drawMarkers:coordinate.latitude lon:coordinate.longitude];
@@ -176,7 +177,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
     [self searchPOI:coordinate.latitude lon:coordinate.longitude];
 }
 
-- (MAOverlayRenderer *)mapView:(MAMapView *)mapView rendererForOverlay:(id <MAOverlay>)overlay
+- (MAOverlayRenderer *)map:(MAMap *)map rendererForOverlay:(id <MAOverlay>)overlay
 {
     if ([overlay isKindOfClass:[MAPolygon class]])
     {
@@ -193,9 +194,9 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         NSNumber* joinType = objc_getAssociatedObject(overlay, "joinType");
         if (joinType != nil) {
             int type = [joinType intValue];
-            if (type == 0) renderer.lineJoin = kCGLineJoinBevel;
-            else if (type == 1) renderer.lineJoin = kCGLineJoinMiter;
-            else if (type == 2) renderer.lineJoin = kCGLineJoinRound;
+            if (type == 0) renderer.lineJoinType = kMALineJoinBevel;
+            else if (type == 1) renderer.lineJoinType = kMALineJoinMiter;
+            else if (type == 2) renderer.lineJoinType = kMALineJoinRound;
         }
         
         return renderer;
@@ -217,13 +218,13 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         
         if (joinType != nil) {
             int type = [joinType intValue];
-            if (type == 0) renderer.lineJoin = kCGLineJoinBevel;
-            else if (type == 1) renderer.lineJoin = kCGLineJoinMiter;
-            else if (type == 2) renderer.lineJoin = kCGLineJoinRound;
+            if (type == 0) renderer.lineJoinType = kMALineJoinBevel;
+            else if (type == 1) renderer.lineJoinType = kMALineJoinMiter;
+            else if (type == 2) renderer.lineJoinType = kMALineJoinRound;
         }
 
         if ([isDottedLine boolValue]) {
-             renderer.lineDashPattern = @[@10, @10];
+             renderer.lineDashType = kMALineDashTypeSquare;
         }
         
         return renderer;
@@ -231,23 +232,19 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
     return nil;
 }
 
-- (MAAnnotationView *)mapView:(MAMapView *)mapView viewForAnnotation:(id <MAAnnotation>)annotation
+- (MAAnnotationView *)map:(MAMap *)map viewForAnnotation:(id <MAAnnotation>)annotation
 {
+    if ([annotation isKindOfClass:[MAUserLocation class]]) {
+        return nil; // 定位点使用默认样式（小蓝点）
+    }
     if ([annotation isKindOfClass:[MAPointAnnotation class]])
     {
-        static NSString *pointReuseIndentifier = @"pointReuseIndentifier";
-        MAPinAnnotationView* annotationView = (MAPinAnnotationView*)[mapView dequeueReusableAnnotationViewWithIdentifier:pointReuseIndentifier];
-        if (annotationView == nil)
-        {
-            annotationView = [[MAPinAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:pointReuseIndentifier];
-        }
+        MAPinAnnotationView* annotationView = [[MAPinAnnotationView alloc] initWithAnnotation:annotation];
         NSNumber* infoWindowEnable = objc_getAssociatedObject(annotation, "infoWindowEnable");
         BOOL canShowCallout = (infoWindowEnable != nil) ? [infoWindowEnable boolValue] : YES; // Default true
         
         annotationView.canShowCallout= canShowCallout;
-        annotationView.animatesDrop = YES;        //设置标注动画显示，默认为NO
         annotationView.draggable = YES;        //设置标注可以拖动，默认为NO
-        annotationView.pinColor = MAPinAnnotationColorPurple;
         
         NSNumber* anchorX = objc_getAssociatedObject(annotation, "anchorX");
         NSNumber* anchorY = objc_getAssociatedObject(annotation, "anchorY");
@@ -289,7 +286,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
                 
                 // If we have a custom image config, we should use MAAnnotationView instead of MAPinAnnotationView
                 // Even if image is nil (failed), we return this to avoid showing the default purple pin.
-                 MAAnnotationView* customView = [[MAAnnotationView alloc] initWithAnnotation:annotation reuseIdentifier:@"customAnnotation"];
+                 MAAnnotationView* customView = [[MAAnnotationView alloc] initWithAnnotation:annotation];
                  if (image != nil) {
                     customView.image = image;
                  }
@@ -321,7 +318,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
     return nil;
 }
 
-- (void)mapView:(MAMapView *)mapView didSelectAnnotationView:(MAAnnotationView *)view
+- (void)map:(MAMap *)map didSelectAnnotationView:(MAAnnotationView *)view
 {
     id<MAAnnotation> annotation = view.annotation;
     NSString *markerId = objc_getAssociatedObject(annotation, "markerId");
@@ -330,7 +327,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
     }
 }
 
-- (void)mapView:(MAMapView *)mapView annotationView:(MAAnnotationView *)view didChangeDragState:(MAAnnotationViewDragState)newState fromOldState:(MAAnnotationViewDragState)oldState {
+- (void)map:(MAMap *)map annotationView:(MAAnnotationView *)view didChangeDragState:(MAAnnotationViewDragState)newState fromOldState:(MAAnnotationViewDragState)oldState {
     if (newState == MAAnnotationViewDragStateEnding) {
         id<MAAnnotation> annotation = view.annotation;
         NSString *markerId = objc_getAssociatedObject(annotation, "markerId");
@@ -356,13 +353,34 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
 
 //接收位置更新,实现AMapLocationManagerDelegate代理的amapLocationManager:didUpdateLocation方法，处理位置更新
 - (void)amapLocationManager:(AMapLocationManager *)manager didUpdateLocation:(CLLocation *)location reGeocode:(AMapLocationReGeocode *)reGeocode{
-    CLLocationCoordinate2D center;
-    center.latitude = location.coordinate.latitude;
-    center.longitude = location.coordinate.longitude;
-    [_mapView setZoomLevel:17 animated: YES];
-    [_mapView setCenterCoordinate:center animated:YES];
-    [self.locationManager stopUpdatingLocation];
-    [self searchPOI:location.coordinate.latitude lon:location.coordinate.longitude];
+    if (!CLLocationCoordinate2DIsValid(location.coordinate)) {
+        return;
+    }
+    
+    // 同步给Lite SDK地图以更新蓝点
+    [_map setUserLocation:location coordinateType:AMapCoordinateTypeAMap];
+    
+    // 如果是第一次定位，将地图移动到中心点
+    static BOOL alreadyCentered = NO;
+    if (!alreadyCentered) {
+        CLLocationCoordinate2D center;
+        center.latitude = location.coordinate.latitude;
+        center.longitude = location.coordinate.longitude;
+        
+        // 优化：如果当前缩放级别过小（例如默认的3或没有设置），则调整到一个合适的街道级别（如16.5）
+        // 如果用户已经在 initialCameraPosition 中设置了缩放，这里保持用户设置，只改中心点
+        if (_map.zoomLevel < 10) {
+            [_map setZoomLevel:16.5 animated:YES];
+        }
+        
+        [_map setCenterCoordinate:center animated:YES];
+        alreadyCentered = YES;
+        [self searchPOI:location.coordinate.latitude lon:location.coordinate.longitude];
+    }
+}
+
+- (void)amapLocationManager:(AMapLocationManager *)manager didUpdateHeading:(CLHeading *)newHeading {
+    [_map setUserHeading:newHeading];
 }
 
 /* POI 搜索回调. */
@@ -382,8 +400,8 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
             CLLocationCoordinate2D center;
             center.latitude = obj.location.latitude;
             center.longitude = obj.location.longitude;
-            [self->_mapView setZoomLevel:17 animated: YES];
-            [self->_mapView setCenterCoordinate:center animated:YES];
+            [self->_map setZoomLevel:17 animated: YES];
+            [self->_map setCenterCoordinate:center animated:YES];
             if (self->_showClickMarker) {
                 [self drawMarkers:obj.location.latitude lon:obj.location.longitude];
             }
@@ -417,7 +435,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
 }
 
 - (UIView*)view {
-    return _mapView;
+    return _webViewContainer.webView;
 }
     
 //检查是否授予定位权限
@@ -430,7 +448,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
     if (self->_pointAnnotation == NULL) {
         self->_pointAnnotation = [[MAPointAnnotation alloc] init];
         self->_pointAnnotation.coordinate = CLLocationCoordinate2DMake(lat, lon);
-        [self->_mapView addAnnotation:self->_pointAnnotation];
+        [self->_map addAnnotation:self->_pointAnnotation];
     } else {
         self->_pointAnnotation.coordinate = CLLocationCoordinate2DMake(lat, lon);
     }
@@ -465,7 +483,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         CLLocationCoordinate2D center;
         center.latitude = [lat doubleValue];
         center.longitude = [lon doubleValue];
-        [self->_mapView setCenterCoordinate:center animated:YES];
+        [self->_map setCenterCoordinate:center animated:YES];
         [self drawMarkers:[lat doubleValue] lon:[lon doubleValue]];
     } else if ([[call method] isEqualToString:@"location"]) {
         [self.locationManager startUpdatingLocation]; 
@@ -512,7 +530,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
             objc_setAssociatedObject(annotation, "iconConfig", iconObj, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         
-        [self->_mapView addAnnotation:annotation];
+        [self->_map addAnnotation:annotation];
         result(nil);
     } else if ([[call method] isEqualToString:@"updateMarker"]) {
         NSDictionary* positionArgs = [call arguments][@"position"];
@@ -555,15 +573,15 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
             // To ensure UI updates for custom view properties (icon, anchor), we get the view and update it, 
             // or re-add annotation.
             // Re-adding is simplest to ensure full state consistency via viewForAnnotation.
-            [self->_mapView removeAnnotation:annotation];
-            [self->_mapView addAnnotation:annotation];
+            [self->_map removeAnnotation:annotation];
+            [self->_map addAnnotation:annotation];
         }
         result(nil);
     } else if ([[call method] isEqualToString:@"removeMarker"]) {
         NSString* markerId = [call arguments][@"id"];
         MAPointAnnotation* annotation = [self->_markerMap objectForKey:markerId];
         if (annotation != nil) {
-            [self->_mapView removeAnnotation:annotation];
+            [self->_map removeAnnotation:annotation];
             [self->_markerMap removeObjectForKey:markerId];
         }
     } else if ([[call method] isEqualToString:@"addPolyline"]) {
@@ -595,7 +613,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
             NSNumber *joinType = [call arguments][@"joinType"];
             objc_setAssociatedObject(polyline, "joinType", joinType, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             
-            [self->_mapView addOverlay:polyline];
+            [self->_map addOverlay:polyline];
         }
     } else if ([[call method] isEqualToString:@"addPolygon"]) {
         NSArray* points = [call arguments][@"points"];
@@ -624,7 +642,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
 
             objc_setAssociatedObject(polygon, "fillColor", fillColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-            [self->_mapView addOverlay:polygon];
+            [self->_map addOverlay:polygon];
             NSString* id = [call arguments][@"id"];
             if (id != nil) {
                 [self->_polygonMap setObject:polygon forKey:id];
@@ -634,7 +652,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         NSString* id = [call arguments][@"id"];
         MAPolygon* oldPolygon = [self->_polygonMap objectForKey:id];
         if (oldPolygon != nil) {
-            [self->_mapView removeOverlay:oldPolygon];
+            [self->_map removeOverlay:oldPolygon];
             
             // Re-add new polygon (since MAPolygon geometry is immutable)
              NSArray* points = [call arguments][@"points"];
@@ -654,7 +672,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
                 objc_setAssociatedObject(polygon, "strokeColor", strokeColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 objc_setAssociatedObject(polygon, "fillColor", fillColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 
-                [self->_mapView addOverlay:polygon];
+                [self->_map addOverlay:polygon];
                 [self->_polygonMap setObject:polygon forKey:id];
             }
         }
@@ -662,12 +680,12 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         NSString* id = [call arguments][@"id"];
         MAPolygon* polygon = [self->_polygonMap objectForKey:id];
         if (polygon != nil) {
-            [self->_mapView removeOverlay:polygon];
+            [self->_map removeOverlay:polygon];
             [self->_polygonMap removeObjectForKey:id];
         }
     } else if ([[call method] isEqualToString:@"clear"]) {
-        [self->_mapView removeAnnotations:self->_mapView.annotations];
-        [self->_mapView removeOverlays:self->_mapView.overlays];
+        [self->_map removeAnnotations:self->_map.annotations];
+        [self->_map removeOverlays:self->_map.overlays];
         [self->_polygonMap removeAllObjects];
         [self->_markerMap removeAllObjects];
         self->_pointAnnotation = nil;
@@ -676,8 +694,8 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
     } else if ([[call method] isEqualToString:@"animateCamera"]) {
         [self animateCamera:[call arguments]];
     } else if ([[call method] isEqualToString:@"getLocation"]) {
-        CLLocation* location = self->_mapView.userLocation.location;
-        if (location != nil) {
+        CLLocation* location = self->_map.userLocation.location;
+        if (location != nil && CLLocationCoordinate2DIsValid(location.coordinate)) {
             result(@{
                 @"latitude" : @(location.coordinate.latitude),
                 @"longitude" : @(location.coordinate.longitude)
@@ -698,60 +716,65 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
 }
 
 - (void)updateCamera:(NSArray*)arguments animated:(BOOL)animated {
-    if (arguments.count == 0) return;
+    if (arguments.count == 0 || _map == nil) return;
     NSString* type = arguments[0];
     
     if ([type isEqualToString:@"newLatLng"]) {
         NSDictionary* latLng = arguments[1];
         CLLocationCoordinate2D center = CLLocationCoordinate2DMake([latLng[@"latitude"] doubleValue], [latLng[@"longitude"] doubleValue]);
-        [self->_mapView setCenterCoordinate:center animated:animated];
+        [self->_map setCenterCoordinate:center animated:animated];
     } else if ([type isEqualToString:@"newLatLngZoom"]) {
         NSDictionary* latLng = arguments[1];
         double zoom = [arguments[2] doubleValue];
         CLLocationCoordinate2D center = CLLocationCoordinate2DMake([latLng[@"latitude"] doubleValue], [latLng[@"longitude"] doubleValue]);
-        [self->_mapView setZoomLevel:zoom animated:animated];
-        [self->_mapView setCenterCoordinate:center animated:animated];
+        [self->_map setZoomLevel:zoom animated:animated];
+        [self->_map setCenterCoordinate:center animated:animated];
     } else if ([type isEqualToString:@"zoomIn"]) {
-        [self->_mapView setZoomLevel:self->_mapView.zoomLevel + 1 animated:animated];
+        [self->_map setZoomLevel:self->_map.zoomLevel + 1 animated:animated];
     } else if ([type isEqualToString:@"zoomOut"]) {
-        [self->_mapView setZoomLevel:self->_mapView.zoomLevel - 1 animated:animated];
+        [self->_map setZoomLevel:self->_map.zoomLevel - 1 animated:animated];
     } else if ([type isEqualToString:@"zoomTo"]) {
         double zoom = [arguments[1] doubleValue];
-        [self->_mapView setZoomLevel:zoom animated:animated];
+        [self->_map setZoomLevel:zoom animated:animated];
     } else if ([type isEqualToString:@"scrollBy"]) {
         double x = [arguments[1] doubleValue];
         double y = [arguments[2] doubleValue];
         
-        CGPoint centerPoint = [self->_mapView convertCoordinate:self->_mapView.centerCoordinate toPointToView:self->_mapView];
-        CGPoint newCenterPoint = CGPointMake(centerPoint.x + x, centerPoint.y + y);
-        CLLocationCoordinate2D newCenter = [self->_mapView convertPoint:newCenterPoint toCoordinateFromView:self->_mapView];
-        [self->_mapView setCenterCoordinate:newCenter animated:animated];
+        __weak __typeof__(self) weakSelf = self;
+        [self->_map convertCoordinate:self->_map.centerCoordinate completeCallback:^(CGPoint centerPoint) {
+            __strong __typeof__(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            CGPoint newPoint = CGPointMake(centerPoint.x + x, centerPoint.y + y);
+            [strongSelf->_map convertPoint:newPoint completeCallback:^(CLLocationCoordinate2D newCenter) {
+                __strong __typeof__(weakSelf) strongSelf2 = weakSelf;
+                if (!strongSelf2) return;
+                [strongSelf2->_map setCenterCoordinate:newCenter animated:animated];
+            }];
+        }];
     } else if ([type isEqualToString:@"newCameraPosition"]) {
         NSDictionary* cameraParams = arguments[1];
         NSDictionary* targetMap = cameraParams[@"target"];
         double zoom = [cameraParams[@"zoom"] doubleValue];
-        // tilt and bearing are ignored for AMap 2D iOS implementation as MAMapView (if configured for 2D) typically handles 2D perspective.
-        
         CLLocationCoordinate2D center = CLLocationCoordinate2DMake([targetMap[@"latitude"] doubleValue], [targetMap[@"longitude"] doubleValue]);
-        [self->_mapView setZoomLevel:zoom animated:animated];
-        [self->_mapView setCenterCoordinate:center animated:animated];
+        [self->_map setZoomLevel:zoom animated:animated];
+        [self->_map setCenterCoordinate:center animated:animated];
     }
 }
-- (void)mapView:(MAMapView *)mapView regionWillChangeAnimated:(BOOL)animated {
+- (void)mapRegionChanged:(MAMap *)map {
     if (_onCameraChange) {
         NSDictionary* arguments = @{
-            @"latitude" : @(mapView.centerCoordinate.latitude),
-            @"longitude" : @(mapView.centerCoordinate.longitude)
+            @"latitude" : @(map.centerCoordinate.latitude),
+            @"longitude" : @(map.centerCoordinate.longitude)
         };
         [_channel invokeMethod:@"onCameraChange" arguments:arguments];
     }
 }
 
-- (void)mapView:(MAMapView *)mapView regionDidChangeAnimated:(BOOL)animated {
+- (void)mapRegionDidChanged:(MAMap *)map {
     if (_onCameraChangeFinish) {
         NSDictionary* arguments = @{
-            @"latitude" : @(mapView.centerCoordinate.latitude),
-            @"longitude" : @(mapView.centerCoordinate.longitude)
+            @"latitude" : @(map.centerCoordinate.latitude),
+            @"longitude" : @(map.centerCoordinate.longitude)
         };
         [_channel invokeMethod:@"onCameraChangeFinish" arguments:arguments];
     }

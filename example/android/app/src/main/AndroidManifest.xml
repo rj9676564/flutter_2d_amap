@@ -11,10 +11,6 @@
         android:label="flutter_2d_amap_example"
         android:icon="@mipmap/ic_launcher">
 
-        <meta-data
-            android:name="com.amap.api.v2.apikey"
-            android:value="aa86b8755beb4415f83b75044f1cd792"/>
-
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection"
             android:hardwareAccelerated="true"

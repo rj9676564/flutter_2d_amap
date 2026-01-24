@@ -8,6 +8,7 @@ void main() {
   Flutter2dAMap.setApiKey(
     iOSKey: '1a8f6a489483534a9f2ca96e4eeeb9b3',
     webKey: '4e479545913a3a180b3cffc267dad646',
+    androidKey: 'f7ce066dbebef774b3d6dc96434daade',
   ).then((value) => runApp(const MyApp()));
 }
 
@@ -37,8 +38,13 @@ class _MyAppState extends State<MyApp> {
             Expanded(
               flex: 9,
               child: AMapView(
+                isPoiSearch: false,
+                showClickMarker: false,
+                moveCameraOnTap: false,
                 onPoiSearched: (List<PoiSearch> result) {
-                  print("User result: ${result.first.toJson()}");
+                  setState(() {
+                    _list = result;
+                  });
                 },
                 onPoiClick: (Poi poi) {
                   print(
@@ -51,6 +57,10 @@ class _MyAppState extends State<MyApp> {
                 onAMapViewCreated: (controller) {
                   _aMapController = controller;
                 },
+                initialCameraPosition: const CameraPosition(
+                  target: LatLng(22.543099, 114.057868), // 设一个默认位置，比如深圳
+                  zoom: 16,
+                ),
               ),
             ),
             Expanded(

@@ -31,11 +31,12 @@ class Flutter2dAMap {
   static String get webKey => _webKey;
 
   static Future<bool?> setApiKey(
-      {String iOSKey = '', String webKey = ''}) async {
+      {String iOSKey = '', String androidKey = '', String webKey = ''}) async {
     if (kIsWeb) {
       _webKey = webKey;
     } else {
-      return _channel.invokeMethod<bool>('setKey', iOSKey);
+      final String key = Platform.isIOS ? iOSKey : androidKey;
+      return _channel.invokeMethod<bool>('setKey', key);
     }
     return Future.value(true);
   }
