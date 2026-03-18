@@ -135,9 +135,9 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         [_map setZoomLevel:16.5 animated:NO];
     }
     
-    // 开启蓝点展示和定位同步
+    // 开启蓝点展示，但不要自动跟随定位回中，避免业务层手动选点后被拉回当前位置
     _map.showsUserLocation = YES;
-    _map.userTrackingMode = MAUserTrackingModeFollow;
+    _map.userTrackingMode = MAUserTrackingModeNone;
     
     // 配置小蓝点样式
     // MAUserLocationRepresentation *represent = [[MAUserLocationRepresentation alloc] init];
@@ -360,23 +360,7 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
     // 同步给Lite SDK地图以更新蓝点
     [_map setUserLocation:location coordinateType:AMapCoordinateTypeAMap];
     
-    // 如果是第一次定位，将地图移动到中心点
-    static BOOL alreadyCentered = NO;
-    if (!alreadyCentered) {
-        CLLocationCoordinate2D center;
-        center.latitude = location.coordinate.latitude;
-        center.longitude = location.coordinate.longitude;
-        
-        // 优化：如果当前缩放级别过小（例如默认的3或没有设置），则调整到一个合适的街道级别（如16.5）
-        // 如果用户已经在 initialCameraPosition 中设置了缩放，这里保持用户设置，只改中心点
-        if (_map.zoomLevel < 10) {
-            [_map setZoomLevel:16.5 animated:YES];
-        }
-        
-        [_map setCenterCoordinate:center animated:YES];
-        alreadyCentered = YES;
-        [self searchPOI:location.coordinate.latitude lon:location.coordinate.longitude];
-    }
+    [self searchPOI:location.coordinate.latitude lon:location.coordinate.longitude];
 }
 
 - (void)amapLocationManager:(AMapLocationManager *)manager didUpdateHeading:(CLHeading *)newHeading {
