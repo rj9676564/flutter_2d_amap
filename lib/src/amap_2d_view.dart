@@ -30,6 +30,7 @@ class AMapView extends StatefulWidget {
     this.onCameraChange,
     this.onCameraChangeFinish,
     this.onAMapViewCreated,
+    this.ignoreTouchRects,
   });
 
   final bool isPoiSearch;
@@ -42,6 +43,11 @@ class AMapView extends StatefulWidget {
   final bool myLocationButtonEnabled;
   final CameraPosition? initialCameraPosition;
   final AMapViewCreatedCallback? onAMapViewCreated;
+
+  /// 需要从原生地图命中测试中排除的区域（相对地图视图的本地坐标）。
+  /// 覆盖在地图上的 Flutter 控件（如按钮）会因 WKWebView 内部手势抢占触摸而
+  /// 点击穿透到原生地图，设置此区域后该区域触摸回传给 Flutter 层处理。
+  final List<Rect>? ignoreTouchRects;
   final Function(List<PoiSearch>)? onPoiSearched;
   final Function(Poi)? onPoiClick;
   final Function(LatLng)? onAMapClick;

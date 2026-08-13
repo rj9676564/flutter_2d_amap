@@ -15,6 +15,15 @@
 #import <objc/runtime.h>
 #import "MAWKWebView.h"
 
+#pragma mark - 触摸拦截容器
+
+/// 覆盖层容器：把按钮等 Flutter 控件占用的区域从原生地图的命中测试中排除。
+/// 点击这些区域时 hitTest 返回 nil，触摸沿响应链回传给 Flutter 渲染层，
+/// 由 Flutter 侧的按钮处理，避免穿透到 WKWebView（地图 onAMapClick 误触发）。
+@interface MATouchIgnoreContainerView : UIView
+@property(nonatomic, copy) NSArray<NSValue*>* ignoreRects;
+@end
+
 @implementation FlutterAMap2DFactory {
     NSObject<FlutterBinaryMessenger>* _messenger;
 }
@@ -68,6 +77,7 @@
     NSDictionary* _initialCameraPosition;
     bool _onCameraChange;
     bool _onCameraChangeFinish;
+    MATouchIgnoreContainerView* _touchContainer;
 }
 
 NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060100|060200|060300|060400|070000|080000|080100|080300|080500|080600|090000|090100|090200|090300|100000|100100|110000|110100|120000|120200|120300|130000|140000|141200|150000|150100|150200|160000|160100|170000|170100|170200|180000|190000|200000";
@@ -103,6 +113,17 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         _map = [[MAMap alloc] initWithWebView:_webViewContainer];
         _map.delegate = self;
         [_map createMap];
+
+        // 触摸拦截容器：按钮等 Flutter 控件覆盖在地图上时，按钮区域的触摸
+        // 会被 WKWebView 内部手势直接吃掉（点击穿透，地图 onAMapClick 误触发）。
+        // 这里把按钮区域从原生地图的命中测试中排除，让触摸回传给 Flutter 层处理。
+        _touchContainer = [[MATouchIgnoreContainerView alloc] initWithFrame:frame];
+        _touchContainer.ignoreRects = [self parseIgnoreTouchRects:args[@"ignoreTouchRects"]];
+        WKWebView* mapWebView = _webViewContainer.webView;
+        mapWebView.frame = _touchContainer.bounds;
+        mapWebView.autoresizingMask =
+            UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [_touchContainer addSubview:mapWebView];
         
         _map.zoomEnabled = _zoomGesturesEnabled;
         _map.scrollEnabled = _scrollGesturesEnabled;
@@ -419,7 +440,27 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
 }
 
 - (UIView*)view {
-    return _webViewContainer.webView;
+    return _touchContainer;
+}
+
+#pragma mark - 触摸拦截
+
+/// 把 Dart 侧传来的 [[left, top, width, height], ...]（相对地图视图）转为 CGRect 数组
+- (NSArray<NSValue*>*)parseIgnoreTouchRects:(id)raw {
+    if (![raw isKindOfClass:[NSArray class]]) {
+        return @[];
+    }
+    NSMutableArray<NSValue*>* rects = [NSMutableArray array];
+    for (id item in raw) {
+        if ([item isKindOfClass:[NSArray class]] && [item count] == 4) {
+            CGFloat left = [item[0] doubleValue];
+            CGFloat top = [item[1] doubleValue];
+            CGFloat width = [item[2] doubleValue];
+            CGFloat height = [item[3] doubleValue];
+            [rects addObject:[NSValue valueWithCGRect:CGRectMake(left, top, width, height)]];
+        }
+    }
+    return rects;
 }
     
 //检查是否授予定位权限
@@ -763,4 +804,17 @@ NSString* _types = @"010000|010100|020000|030000|040000|050000|050100|060000|060
         [_channel invokeMethod:@"onCameraChangeFinish" arguments:arguments];
     }
 }
+@end
+
+@implementation MATouchIgnoreContainerView
+
+- (UIView*)hitTest:(CGPoint)point withEvent:(UIEvent*)event {
+    for (NSValue* value in self.ignoreRects) {
+        if (CGRectContainsPoint(value.CGRectValue, point)) {
+            return nil;
+        }
+    }
+    return [super hitTest:point withEvent:event];
+}
+
 @end

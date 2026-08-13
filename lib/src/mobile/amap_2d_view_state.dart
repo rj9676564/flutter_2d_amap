@@ -54,6 +54,7 @@ class _CreationParams {
     this.initialCameraPosition,
     this.onCameraChange = false,
     this.onCameraChangeFinish = false,
+    this.ignoreTouchRects,
   });
 
   static _CreationParams fromWidget(AMapView widget) {
@@ -69,6 +70,7 @@ class _CreationParams {
       initialCameraPosition: widget.initialCameraPosition,
       onCameraChange: widget.onCameraChange != null,
       onCameraChangeFinish: widget.onCameraChangeFinish != null,
+      ignoreTouchRects: widget.ignoreTouchRects,
     );
   }
 
@@ -83,6 +85,7 @@ class _CreationParams {
   final CameraPosition? initialCameraPosition;
   final bool onCameraChange;
   final bool onCameraChangeFinish;
+  final List<Rect>? ignoreTouchRects;
 
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
@@ -97,6 +100,9 @@ class _CreationParams {
       'initialCameraPosition': initialCameraPosition?.toMap(),
       'onCameraChange': onCameraChange,
       'onCameraChangeFinish': onCameraChangeFinish,
+      'ignoreTouchRects': ignoreTouchRects
+          ?.map((Rect r) => <double>[r.left, r.top, r.width, r.height])
+          .toList(),
     };
   }
 }
